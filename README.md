@@ -64,13 +64,6 @@ If you plan to use the tool for its MCP server functionality, you need to integr
 
 <img src="screenshots/cli.png" width="400px"/>
 
-## Healthcheck
-
-The repository includes a GitHub Action that runs daily at 00:00 UTC to verify the download operations are working. The workflow:
-- Runs the healthcheck script automatically.
-- Reports failures if any test fails.
-- Can be triggered manually via the Actions tab.
-
 ## Anna's Archive Mirrors
 
 Anna's Archive has multiple mirrors, which may be innactive at times due to various reasons. Below is a list of known mirrors and their status as of January 2025:

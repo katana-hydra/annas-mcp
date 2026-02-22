@@ -10,34 +10,12 @@
 
 ## Available Operations
 
-| Operation                                      | MCP Tool           | CLI Command         |
-| ---------------------------------------------- | ------------------ | ------------------- |
-| Search for books by title, author, or topic   | `book_search`      | `book-search`       |
-| Download a book by its MD5 hash                | `book_download`    | `book-download`     |
-| Search for articles by DOI or keywords        | `article_search`   | `article-search`    |
-| Download an article by its DOI                 | `article_download` | `article-download`  |
-
-### Usage Examples
-
-**Searching for Books**
-- **MCP**: Use the `book_search` tool with a query like `"machine learning python"`
-- **CLI**: `annas-mcp book-search "machine learning python"`
-
-**Downloading Books**
-- **MCP**: Use `book_download` with the hash from search results
-- **CLI**: `annas-mcp book-download abc123def456 "my-book.pdf"`
-
-**Searching for Articles**
-- **MCP**: Use `article_search` with either a DOI or keywords
-  - By DOI: `article_search` with query `"10.1038/nature12345"`
-  - By keywords: `article_search` with query `"neural networks"`
-- **CLI**:
-  - By DOI: `annas-mcp article-search "10.1038/nature12345"`
-  - By keywords: `annas-mcp article-search "neural networks"`
-
-**Downloading Articles**
-- **MCP**: Use `article_download` with the DOI
-- **CLI**: `annas-mcp article-download "10.1038/nature12345"`
+| Operation                                      | MCP Tool           | CLI Command         | Example                                                      |
+| ---------------------------------------------- | ------------------ | ------------------- | ------------------------------------------------------------ |
+| Search for books by title, author, or topic   | `book_search`      | `book-search`       | `book-search "machine learning python"`                     |
+| Download a book by its MD5 hash                | `book_download`    | `book-download`     | `book-download abc123def456 "my-book.pdf"`                  |
+| Search for articles by DOI or keywords        | `article_search`   | `article-search`    | `article-search "10.1038/nature12345"` or `article-search "neural networks"` |
+| Download an article by its DOI                 | `article_download` | `article-download`  | `article-download "10.1038/nature12345"`                    |
 
 ## Requirements
 
@@ -88,33 +66,10 @@ If you plan to use the tool for its MCP server functionality, you need to integr
 
 ## Healthcheck
 
-To verify that the installation is working correctly, run the healthcheck script:
-
-```bash
-./scripts/healthcheck.sh
-```
-
-This script tests:
-- Book search functionality (searching for "crypto")
-- Article search functionality (searching for a paper by DOI)
-
-Both tests should pass if the service is functioning properly.
-
-### Automated Healthchecks
-
-The repository includes a GitHub Action (`.github/workflows/healthcheck.yml`) that runs daily at 00:00 UTC to verify the service is working. The workflow:
-- Runs the healthcheck script automatically
-- Reports failures if any test fails
-- Can be triggered manually via the Actions tab
-
-#### Manual Trigger
-
-To manually run the healthcheck:
-1. Go to the **Actions** tab in GitHub
-2. Select **"Daily Healthcheck"** from the workflows list
-3. Click **"Run workflow"**
-4. Optionally provide a reason for the manual run
-5. Click **"Run workflow"** to start
+The repository includes a GitHub Action that runs daily at 00:00 UTC to verify the download operations are working. The workflow:
+- Runs the healthcheck script automatically.
+- Reports failures if any test fails.
+- Can be triggered manually via the Actions tab.
 
 ## Anna's Archive Mirrors
 

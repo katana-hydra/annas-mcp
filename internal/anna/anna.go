@@ -103,10 +103,7 @@ func sanitizeFilename(filename string) string {
 	return safe
 }
 
-func FindBook(query string, content string) ([]*Book, error) {
-	if content == "" {
-		content = "book_any"
-	}
+func FindBook(query string) ([]*Book, error) {
 	l := logger.GetLogger()
 
 	// Use mutex to protect concurrent slice access
@@ -149,7 +146,7 @@ func FindBook(query string, content string) ([]*Book, error) {
 		return nil, err
 	}
 
-	fullURL := fmt.Sprintf(AnnasSearchEndpointFormat, env.AnnasBaseURL, url.QueryEscape(query), url.QueryEscape(content))
+	fullURL := fmt.Sprintf(AnnasSearchEndpointFormat, env.AnnasBaseURL, url.QueryEscape(query), "book_any")
 
 	if err := c.Visit(fullURL); err != nil {
 		l.Error("Failed to visit search URL", zap.String("url", fullURL), zap.Error(err))
@@ -225,6 +222,125 @@ func FindBook(query string, content string) ([]*Book, error) {
 	)
 
 	return bookListParsed, nil
+}
+
+func FindArticle(query string) ([]*Paper, error) {
+	l := logger.GetLogger()
+
+	// Use mutex to protect concurrent slice access
+	var paperListMutex sync.Mutex
+	paperList := make([]*colly.HTMLElement, 0)
+
+	c := colly.NewCollector(
+		colly.Async(true),
+		// Set realistic User-Agent to avoid DDoS-Guard blocking
+		colly.UserAgent(BrowserUserAgent),
+	)
+
+	c.OnHTML("a[href^='/md5/']", func(e *colly.HTMLElement) {
+		// Only process the first link (the cover image link), not the duplicate title link
+		if e.Attr("class") == "custom-a block mr-2 sm:mr-4 hover:opacity-80" {
+			paperListMutex.Lock()
+			paperList = append(paperList, e)
+			paperListMutex.Unlock()
+		}
+	})
+
+	c.OnRequest(func(r *colly.Request) {
+		l.Info("Visiting URL", zap.String("url", r.URL.String()))
+	})
+
+	// Add error handler
+	c.OnError(func(r *colly.Response, err error) {
+		status := 0
+		if r != nil {
+			status = r.StatusCode
+		}
+		l.Error("Article search request failed",
+			zap.Int("statusCode", status),
+			zap.Error(err),
+		)
+	})
+
+	env, err := env.GetEnv()
+	if err != nil {
+		return nil, err
+	}
+
+	fullURL := fmt.Sprintf(AnnasSearchEndpointFormat, env.AnnasBaseURL, url.QueryEscape(query), "journal")
+
+	if err := c.Visit(fullURL); err != nil {
+		l.Error("Failed to visit article search URL", zap.String("url", fullURL), zap.Error(err))
+		return nil, fmt.Errorf("failed to visit article search URL: %w", err)
+	}
+	c.Wait()
+
+	paperListParsed := make([]*Paper, 0)
+	for _, e := range paperList {
+		// Validate that parent and container elements exist
+		parent := e.DOM.Parent()
+		if parent.Length() == 0 {
+			l.Warn("Skipping article: no parent element found")
+			continue
+		}
+
+		paperInfoDiv := parent.Find("div.max-w-full")
+		if paperInfoDiv.Length() == 0 {
+			l.Warn("Skipping article: info container not found")
+			continue
+		}
+
+		// Extract title
+		titleElement := paperInfoDiv.Find("a[href^='/md5/']")
+		title := strings.TrimSpace(titleElement.Text())
+		if title == "" {
+			l.Warn("Skipping article: title is empty")
+			continue
+		}
+
+		// Extract authors (optional)
+		authorsRaw := paperInfoDiv.Find("a[href^='/search'] span.icon-\\[mdi--user-edit\\]").Parent().Text()
+		authors := strings.TrimSpace(authorsRaw)
+
+		// Extract journal/publisher (optional)
+		journalRaw := paperInfoDiv.Find("a[href^='/search'] span.icon-\\[mdi--company\\]").Parent().Text()
+		journal := strings.TrimSpace(journalRaw)
+
+		// Extract metadata
+		meta := paperInfoDiv.Find("div.text-gray-800").Text()
+		_, _, size := extractMetaInformation(meta)
+
+		// Extract link and hash
+		link := e.Attr("href")
+		if link == "" {
+			l.Warn("Skipping article: no link found", zap.String("title", title))
+			continue
+		}
+		hash := strings.TrimPrefix(link, "/md5/")
+		if hash == "" {
+			l.Warn("Skipping article: no hash found", zap.String("title", title))
+			continue
+		}
+
+		paper := &Paper{
+			Title:     title,
+			Authors:   authors,
+			Journal:   journal,
+			Size:      size,
+			Hash:      hash,
+			PageURL:   e.Request.AbsoluteURL(link),
+		}
+
+		paperListParsed = append(paperListParsed, paper)
+	}
+
+	// Log result count for debugging
+	l.Info("Article search completed",
+		zap.Int("totalElements", len(paperList)),
+		zap.Int("validPapers", len(paperListParsed)),
+	)
+
+	return paperListParsed, nil
 }
 
 func (b *Book) Download(secretKey, folderPath string) error {

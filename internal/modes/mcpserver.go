@@ -2,6 +2,7 @@ package modes
 
 import (
 	"context"
+	"strings"
 
 	"github.com/iosifache/annas-mcp/internal/anna"
 	"github.com/iosifache/annas-mcp/internal/env"
@@ -11,26 +12,25 @@ import (
 	"go.uber.org/zap"
 )
 
-func SearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[SearchParams]) (*mcp.CallToolResultFor[any], error) {
+func BookSearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[BookSearchParams]) (*mcp.CallToolResultFor[any], error) {
 	l := logger.GetLogger()
 
-	l.Info("Search command called",
-		zap.String("searchTerm", params.Arguments.SearchTerm),
-		zap.String("content", params.Arguments.Content),
+	l.Info("Book search command called",
+		zap.String("query", params.Arguments.Query),
 	)
 
-	books, err := anna.FindBook(params.Arguments.SearchTerm, params.Arguments.Content)
+	books, err := anna.FindBook(params.Arguments.Query)
 	if err != nil {
-		l.Error("Search command failed",
-			zap.String("searchTerm", params.Arguments.SearchTerm),
+		l.Error("Book search command failed",
+			zap.String("query", params.Arguments.Query),
 			zap.Error(err),
 		)
 		return nil, err
 	}
 
 	if len(books) == 0 {
-		l.Info("Search returned no results",
-			zap.String("searchTerm", params.Arguments.SearchTerm),
+		l.Info("Book search returned no results",
+			zap.String("query", params.Arguments.Query),
 		)
 		return &mcp.CallToolResultFor[any]{
 			Content: []mcp.Content{&mcp.TextContent{Text: "No books found."}},
@@ -42,8 +42,8 @@ func SearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallTool
 		bookList += book.String() + "\n\n"
 	}
 
-	l.Info("Search command completed successfully",
-		zap.String("searchTerm", params.Arguments.SearchTerm),
+	l.Info("Book search command completed successfully",
+		zap.String("query", params.Arguments.Query),
 		zap.Int("resultsCount", len(books)),
 	)
 
@@ -52,7 +52,7 @@ func SearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallTool
 	}, nil
 }
 
-func DownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[DownloadParams]) (*mcp.CallToolResultFor[any], error) {
+func BookDownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[BookDownloadParams]) (*mcp.CallToolResultFor[any], error) {
 	l := logger.GetLogger()
 
 	l.Info("Download command called",
@@ -99,30 +99,72 @@ func DownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallTo
 	}, nil
 }
 
-func DOITool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[DOIParams]) (*mcp.CallToolResultFor[any], error) {
+func ArticleSearchTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ArticleSearchParams]) (*mcp.CallToolResultFor[any], error) {
 	l := logger.GetLogger()
+	query := params.Arguments.Query
 
-	l.Info("DOI lookup called", zap.String("doi", params.Arguments.DOI))
+	l.Info("Article search command called", zap.String("query", query))
 
-	paper, err := anna.LookupDOI(params.Arguments.DOI)
-	if err != nil {
-		l.Error("DOI lookup failed",
-			zap.String("doi", params.Arguments.DOI),
-			zap.Error(err),
-		)
+	// Auto-detect if input is a DOI (starts with "10.")
+	if strings.HasPrefix(strings.TrimSpace(query), "10.") {
+		// DOI lookup
+		l.Info("Detected DOI format, performing DOI lookup", zap.String("doi", query))
+
+		paper, err := anna.LookupDOI(query)
+		if err != nil {
+			l.Error("DOI lookup failed",
+				zap.String("doi", query),
+				zap.Error(err),
+			)
+			return &mcp.CallToolResultFor[any]{
+				Content: []mcp.Content{&mcp.TextContent{Text: "No paper found for DOI: " + query}},
+			}, nil
+		}
+
+		l.Info("DOI lookup completed", zap.String("doi", query))
+
 		return &mcp.CallToolResultFor[any]{
-			Content: []mcp.Content{&mcp.TextContent{Text: "No paper found for DOI: " + params.Arguments.DOI}},
+			Content: []mcp.Content{&mcp.TextContent{Text: paper.String()}},
 		}, nil
 	}
 
-	l.Info("DOI lookup completed", zap.String("doi", params.Arguments.DOI))
+	// Article keyword search
+	l.Info("Performing article keyword search", zap.String("query", query))
+
+	papers, err := anna.FindArticle(query)
+	if err != nil {
+		l.Error("Article search failed",
+			zap.String("query", query),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	if len(papers) == 0 {
+		l.Info("Article search returned no results",
+			zap.String("query", query),
+		)
+		return &mcp.CallToolResultFor[any]{
+			Content: []mcp.Content{&mcp.TextContent{Text: "No articles found."}},
+		}, nil
+	}
+
+	paperList := ""
+	for _, paper := range papers {
+		paperList += paper.String() + "\n\n"
+	}
+
+	l.Info("Article search command completed successfully",
+		zap.String("query", query),
+		zap.Int("resultsCount", len(papers)),
+	)
 
 	return &mcp.CallToolResultFor[any]{
-		Content: []mcp.Content{&mcp.TextContent{Text: paper.String()}},
+		Content: []mcp.Content{&mcp.TextContent{Text: paperList}},
 	}, nil
 }
 
-func DownloadPaperTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[DownloadPaperParams]) (*mcp.CallToolResultFor[any], error) {
+func ArticleDownloadTool(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ArticleDownloadParams]) (*mcp.CallToolResultFor[any], error) {
 	l := logger.GetLogger()
 
 	l.Info("Download paper command called", zap.String("doi", params.Arguments.DOI))
@@ -201,20 +243,19 @@ func StartMCPServer() {
 	server := mcp.NewServer("annas-mcp", serverVersion, nil)
 
 	server.AddTools(
-		mcp.NewServerTool("search", "Search Anna's Archive. Set content to 'book_any' to search books (default), or 'journal' to search journal articles and academic papers. When the user asks for papers or articles, use content=journal. To find a specific paper by DOI, use the doi tool instead.", SearchTool, mcp.Input(
-			mcp.Property("term", mcp.Description("Search query (e.g. book title, author, topic, or paper keywords)")),
-			mcp.Property("content", mcp.Description("Content type: 'book_any' for books (default), 'journal' for academic papers and articles")),
+		mcp.NewServerTool("book_search", "Search Anna's Archive for books by title, author, or topic. Returns book metadata including MD5 hash for downloading.", BookSearchTool, mcp.Input(
+			mcp.Property("query", mcp.Description("Search query for books (e.g., title, author, topic)")),
 		)),
-		mcp.NewServerTool("download", "Download a book by its MD5 hash. Requires ANNAS_SECRET_KEY and ANNAS_DOWNLOAD_PATH environment variables.", DownloadTool, mcp.Input(
+		mcp.NewServerTool("book_download", "Download a book by its MD5 hash from search results. Requires ANNAS_SECRET_KEY and ANNAS_DOWNLOAD_PATH environment variables.", BookDownloadTool, mcp.Input(
 			mcp.Property("hash", mcp.Description("MD5 hash of the book to download")),
 			mcp.Property("title", mcp.Description("Book title, used for filename")),
 			mcp.Property("format", mcp.Description("Book format, for example pdf or epub")),
 		)),
-		mcp.NewServerTool("doi", "Look up a specific journal article by its DOI via SciDB. Returns authors, journal, size, and download links. If you don't have a DOI and the user wants to find papers by topic or keyword, use the search tool with content=journal instead.", DOITool, mcp.Input(
-			mcp.Property("doi", mcp.Description("DOI of the paper (e.g. 10.1038/nature12345)")),
+		mcp.NewServerTool("article_search", "Search for academic articles/papers by DOI or keywords. Auto-detects if input is a DOI (starts with '10.') or a search term. Returns article metadata including DOI and hash.", ArticleSearchTool, mcp.Input(
+			mcp.Property("query", mcp.Description("DOI (e.g., '10.1038/nature12345') or search keywords for articles")),
 		)),
-		mcp.NewServerTool("download_paper", "Download a journal article/paper by its DOI. Looks up the paper, then downloads via fast download (if available) or SciDB. Requires ANNAS_DOWNLOAD_PATH environment variable.", DownloadPaperTool, mcp.Input(
-			mcp.Property("doi", mcp.Description("DOI of the paper to download (e.g. 10.1038/nature12345)")),
+		mcp.NewServerTool("article_download", "Download an academic article/paper by its DOI. Looks up the paper, then downloads via fast download (if available) or SciDB. Requires ANNAS_DOWNLOAD_PATH environment variable.", ArticleDownloadTool, mcp.Input(
+			mcp.Property("doi", mcp.Description("DOI of the article to download (e.g., '10.1038/nature12345')")),
 		)),
 	)
 

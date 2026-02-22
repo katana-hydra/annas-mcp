@@ -39,18 +39,18 @@ func StartCLI() {
 	}
 	rootCmd.SetVersionTemplate("{{.Version}}\n")
 
-	searchCmd := &cobra.Command{
-		Use:   "search [term]",
-		Short: "Search for books",
+	bookSearchCmd := &cobra.Command{
+		Use:   "book-search [query]",
+		Short: "Search for books by title, author, or topic",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			searchTerm := args[0]
-			l.Info("Search command called", zap.String("searchTerm", searchTerm))
+			query := args[0]
+			l.Info("Book search command called", zap.String("query", query))
 
-			books, err := anna.FindBook(searchTerm, "book_any")
+			books, err := anna.FindBook(query)
 			if err != nil {
-				l.Error("Search command failed",
-					zap.String("searchTerm", searchTerm),
+				l.Error("Book search command failed",
+					zap.String("query", query),
 					zap.Error(err),
 				)
 				return fmt.Errorf("failed to search books: %w", err)
@@ -68,8 +68,8 @@ func StartCLI() {
 				}
 			}
 
-			l.Info("Search command completed successfully",
-				zap.String("searchTerm", searchTerm),
+			l.Info("Book search command completed successfully",
+				zap.String("query", query),
 				zap.Int("resultsCount", len(books)),
 			)
 
@@ -77,8 +77,8 @@ func StartCLI() {
 		},
 	}
 
-	downloadCmd := &cobra.Command{
-		Use:   "download [hash] [filename]",
+	bookDownloadCmd := &cobra.Command{
+		Use:   "book-download [hash] [filename]",
 		Short: "Download a book by its MD5 hash",
 		Long:  "Download a book by its MD5 hash to the specified filename. Requires ANNAS_SECRET_KEY and ANNAS_DOWNLOAD_PATH environment variables.",
 		Args:  cobra.ExactArgs(2),
@@ -135,6 +135,133 @@ func StartCLI() {
 		},
 	}
 
+	articleSearchCmd := &cobra.Command{
+		Use:   "article-search [query]",
+		Short: "Search for articles by DOI or keywords",
+		Long:  "Search for academic articles. Provide a DOI (starting with '10.') or keywords.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			query := args[0]
+			l.Info("Article search command called", zap.String("query", query))
+
+			// Auto-detect if input is a DOI (starts with "10.")
+			if strings.HasPrefix(strings.TrimSpace(query), "10.") {
+				// DOI lookup
+				l.Info("Detected DOI format, performing DOI lookup", zap.String("doi", query))
+
+				paper, err := anna.LookupDOI(query)
+				if err != nil {
+					l.Error("DOI lookup failed",
+						zap.String("doi", query),
+						zap.Error(err),
+					)
+					return fmt.Errorf("DOI lookup failed: %w", err)
+				}
+
+				fmt.Println(paper.String())
+
+				l.Info("DOI lookup completed", zap.String("doi", query))
+				return nil
+			}
+
+			// Article keyword search
+			l.Info("Performing article keyword search", zap.String("query", query))
+
+			papers, err := anna.FindArticle(query)
+			if err != nil {
+				l.Error("Article search failed",
+					zap.String("query", query),
+					zap.Error(err),
+				)
+				return fmt.Errorf("article search failed: %w", err)
+			}
+
+			if len(papers) == 0 {
+				fmt.Println("No articles found.")
+				return nil
+			}
+
+			for i, paper := range papers {
+				fmt.Printf("Article %d:\n%s\n", i+1, paper.String())
+				if i < len(papers)-1 {
+					fmt.Println()
+				}
+			}
+
+			l.Info("Article search completed successfully",
+				zap.String("query", query),
+				zap.Int("resultsCount", len(papers)),
+			)
+
+			return nil
+		},
+	}
+
+	articleDownloadCmd := &cobra.Command{
+		Use:   "article-download [doi]",
+		Short: "Download an article by its DOI",
+		Long:  "Download an academic article/paper by providing its DOI.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			doi := args[0]
+			l.Info("Article download command called", zap.String("doi", doi))
+
+			env, err := env.GetEnv()
+			if err != nil {
+				l.Error("Failed to get environment variables", zap.Error(err))
+				return fmt.Errorf("failed to get environment: %w", err)
+			}
+
+			// Lookup paper
+			paper, err := anna.LookupDOI(doi)
+			if err != nil {
+				l.Error("DOI lookup failed for download",
+					zap.String("doi", doi),
+					zap.Error(err),
+				)
+				return fmt.Errorf("DOI lookup failed: %w", err)
+			}
+
+			// Try fast download first if hash and secret key available
+			if paper.Hash != "" && env.SecretKey != "" {
+				book := &anna.Book{
+					Hash:   paper.Hash,
+					Title:  paper.Title,
+					Format: "pdf",
+				}
+				if err := book.Download(env.SecretKey, env.DownloadPath); err == nil {
+					fmt.Printf("Article downloaded successfully to: %s\n", env.DownloadPath)
+					l.Info("Article downloaded via fast download",
+						zap.String("doi", doi),
+						zap.String("path", env.DownloadPath),
+					)
+					return nil
+				}
+				l.Warn("Fast download failed, trying SciDB download",
+					zap.String("doi", doi),
+					zap.Error(err),
+				)
+			}
+
+			// Fall back to SciDB download
+			if err := paper.Download(env.DownloadPath); err != nil {
+				l.Error("SciDB download failed",
+					zap.String("doi", doi),
+					zap.Error(err),
+				)
+				return fmt.Errorf("download failed: %w", err)
+			}
+
+			fmt.Printf("Article downloaded successfully to: %s\n", env.DownloadPath)
+			l.Info("Article downloaded via SciDB",
+				zap.String("doi", doi),
+				zap.String("path", env.DownloadPath),
+			)
+
+			return nil
+		},
+	}
+
 	mcpCmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Start the MCP server",
@@ -147,8 +274,10 @@ func StartCLI() {
 		},
 	}
 
-	rootCmd.AddCommand(searchCmd)
-	rootCmd.AddCommand(downloadCmd)
+	rootCmd.AddCommand(bookSearchCmd)
+	rootCmd.AddCommand(bookDownloadCmd)
+	rootCmd.AddCommand(articleSearchCmd)
+	rootCmd.AddCommand(articleDownloadCmd)
 	rootCmd.AddCommand(mcpCmd)
 
 	if err := fang.Execute(

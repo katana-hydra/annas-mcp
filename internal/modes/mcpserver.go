@@ -234,6 +234,10 @@ func StartMCPServer() {
 	l := logger.GetLogger()
 	defer l.Sync()
 
+	if _, err := env.GetEnv(); err != nil {
+		l.Fatal("Failed to resolve Anna environment at startup", zap.Error(err))
+	}
+
 	serverVersion := version.GetVersion()
 	l.Info("Starting MCP server",
 		zap.String("name", "annas-mcp"),

@@ -33,9 +33,12 @@ The environment should contain two variables:
 
 Optionally, you can set:
 
-- `ANNAS_BASE_URL`: The base URL of the Anna's Archive mirror to use (defaults to `annas-archive.li`).
+- `ANNAS_BASE_URL`: A fallback Anna mirror used if automatic mirror discovery fails.
+- `ANNAS_FIXED_BASE_URL`: A fixed Anna mirror that disables automatic discovery entirely.
 
 These variables can also be stored in an `.env` file in the folder containing the binary.
+
+By default, the tool now attempts to discover the best available Anna mirror at process startup by reading [The Shadow Library Uptime Monitor](https://open-slum.org/) and then locally probing the discovered candidates. If discovery or probing fails, the tool falls back to `ANNAS_BASE_URL`, then to the built-in default mirror. If you need to pin a specific mirror, use `ANNAS_FIXED_BASE_URL`.
 
 ## Setup
 
@@ -49,7 +52,8 @@ If you plan to use the tool for its MCP server functionality, you need to integr
     "args": ["mcp"],
     "env": {
         "ANNAS_SECRET_KEY": "feedfacecafebeef",
-        "ANNAS_DOWNLOAD_PATH": "/Users/iosifache/Downloads"
+        "ANNAS_DOWNLOAD_PATH": "/Users/iosifache/Downloads",
+        "ANNAS_BASE_URL": "annas-archive.li"
     }
 }
 ```
@@ -66,15 +70,6 @@ If you plan to use the tool for its MCP server functionality, you need to integr
 
 ## Anna's Archive Mirrors
 
-Anna's Archive has multiple mirrors, which may be innactive at times due to various reasons. Below is a list of known mirrors and their status as of January 2025:
+Anna's Archive has multiple mirrors, and their availability can change over time. This project now checks [The Shadow Library Uptime Monitor](https://open-slum.org) automatically at startup, dynamically discovers Anna mirror candidates from the public status page, ranks them by recent health and latency, and confirms reachability locally before using one.
 
-| Mirror                                           | Type     | Status    |
-| ------------------------------------------------ | -------- | --------- |
-| [`annas-archive.li`](https://annas-archive.li)   | Official | Active    |
-| [`annas-archive.pm`](https://annas-archive.pm)   | Official | Active    |
-| [`annas-archive.in`](https://annas-archive.in)   | Official | Active    |
-| [`annas-archive.org`](https://annas-archive.org) | Official | Innactive |
-
-Alternatively, use [The Shadow Library Uptime Monitor](https://open-slum.org) to find statuses or alternative mirrors.
-
-This project defaults to `annas-archive.li`. If that mirror is not working for you, please set the `ANNAS_BASE_URL` environment variable to one of the other mirrors.
+If you want the tool to choose a mirror automatically, you do not need to configure anything beyond the required environment variables. If you want a safety net for environments where automatic discovery may fail, set `ANNAS_BASE_URL` to your preferred fallback mirror. If you want to fully disable automatic selection and always use one mirror, set `ANNAS_FIXED_BASE_URL`.
